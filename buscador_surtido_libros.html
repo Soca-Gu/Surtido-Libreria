@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Buscador Surtido Librería</title>
+  <!-- Librerías para leer Excel, descomprimir imágenes internas y escanear códigos de barras -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    :root {
+      --bg: #f1f5f9;
+      --surface: #ffffff;
+      --primary: #1e3a8a;
+      --primary-hover: #1d4ed8;
+      --accent: #0ea5e9;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Barra superior fija */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+      padding: 12px 16px;
+    }
+
+    .header-top {
+      max-width: 820px;
+      margin: 0 auto 10px auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .brand h1 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .file-status {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 240px;
+    }
+
+    @media (min-width: 600px) {
+      .file-status { max-width: 450px; }
+    }
+
+    .btn-change-excel {
+      background: #eff6ff;
+      color: var(--primary);
+      border: 1px solid #bfdbfe;
+      padding: 7px 12px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .btn-change-excel:hover {
+      background: #dbeafe;
+    }
+
+    /* Buscador siempre arriba */
+    .search-bar-wrapper {
+      max-width: 820px;
+      margin: 0 auto;
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    .input-group {
+      position: relative;
+      flex: 1;
+      display: flex;
+      align-items: center;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 13px 40px 13px 14px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      border: 2px solid #cbd5e1;
+      border-radius: 10px;
+      outline: none;
+      background: #f8fafc;
+      color: var(--text-main);
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .search-input:focus {
+      border-color: var(--primary);
+      background: #ffffff;
+    }
+
+    .search-input:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .btn-clear {
+      position: absolute;
+      right: 10px;
+      background: #e2e8f0;
+      border: none;
+      color: #475569;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .btn-clear.visible {
+      display: flex;
+    }
+
+    .btn-scan {
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      border-radius: 10px;
+      padding: 0 16px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn-scan:hover:not(:disabled) {
+      background: var(--primary-hover);
+    }
+
+    .btn-scan:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    /* Contenedor principal */
+    main {
+      flex: 1;
+      max-width: 820px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 18px 16px 40px 16px;
+    }
+
+    /* Escáner de cámara */
+    #scanner-container {
+      display: none;
+      background: #0f172a;
+      border-radius: 14px;
+      overflow: hidden;
+      margin-bottom: 18px;
+      box-shadow: var(--shadow);
+      position: relative;
+    }
+
+    #scanner-container.active {
+      display: block;
+    }
+
+    .scanner-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      background: #1e293b;
+      color: #f8fafc;
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+
+    .btn-close-scanner {
+      background: var(--danger);
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    #reader {
+      width: 100%;
+      background: #000;
+    }
+
+    /* Pantalla inicial de carga de archivo */
+    .upload-box {
+      background: var(--surface);
+      border: 2px dashed #94a3b8;
+      border-radius: 16px;
+      padding: 40px 24px;
+      text-align: center;
+      margin-top: 20px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .upload-box:hover, .upload-box.dragover {
+      border-color: var(--primary);
+      background: #eff6ff;
+    }
+
+    .upload-icon {
+      font-size: 2.8rem;
+      margin-bottom: 12px;
+    }
+
+    .upload-box h2 {
+      font-size: 1.2rem;
+      margin-bottom: 8px;
+      color: var(--text-main);
+    }
+
+    .upload-box p {
+      font-size: 0.92rem;
+      color: var(--text-muted);
+      max-width: 440px;
+      margin: 0 auto 18px auto;
+      line-height: 1.45;
+    }
+
+    .btn-primary-large {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 12px 22px;
+      border-radius: 10px;
+      font-size: 0.98rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Loader de procesamiento */
+    .loading-panel {
+      display: none;
+      background: var(--surface);
+      border-radius: 16px;
+      padding: 36px 24px;
+      text-align: center;
+      box-shadow: var(--shadow);
+      margin-top: 20px;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #e2e8f0;
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 14px auto;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Tarjeta de resultado */
+    .result-card {
+      background: var(--surface);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      animation: fadeIn 0.2s ease;
+    }
+
+    @media (min-width: 600px) {
+      .result-card {
+        flex-direction: row;
+        align-items: stretch;
+      }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .cover-wrapper {
+      background: #f8fafc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+      min-height: 220px;
+    }
+
+    @media (min-width: 600px) {
+      .cover-wrapper {
+        width: 230px;
+        min-width: 230px;
+        border-bottom: none;
+        border-right: 1px solid var(--border);
+      }
+    }
+
+    .cover-img {
+      max-width: 170px;
+      max-height: 240px;
+      width: auto;
+      height: auto;
+      border-radius: 8px;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.14);
+      object-fit: contain;
+    }
+
+    .no-cover {
+      width: 140px;
+      height: 195px;
+      background: #e2e8f0;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #64748b;
+      font-size: 0.82rem;
+      text-align: center;
+      padding: 12px;
+      gap: 8px;
+    }
+
+    .details-wrapper {
+      padding: 20px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .badges-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .badge-category {
+      background: #dbeafe;
+      color: #1e40af;
+      font-weight: 700;
+      font-size: 0.85rem;
+      padding: 6px 12px;
+      border-radius: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .badge-sheet {
+      background: #f1f5f9;
+      color: #334155;
+      font-weight: 600;
+      font-size: 0.82rem;
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
+    }
+
+    .book-title {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: var(--text-main);
+      line-height: 1.3;
+      margin-bottom: 14px;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      background: #f8fafc;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+
+    .meta-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .meta-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .meta-value {
+      font-size: 0.96rem;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-top: 2px;
+    }
+
+    .meta-value.price {
+      color: #059669;
+      font-size: 1.05rem;
+    }
+
+    /* Lista de coincidencias parciales */
+    .matches-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .matches-header {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .match-row {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.1s;
+    }
+
+    .match-row:hover {
+      border-color: var(--primary);
+      transform: translateY(-1px);
+    }
+
+    .match-thumb {
+      width: 44px;
+      height: 60px;
+      object-fit: cover;
+      border-radius: 4px;
+      background: #e2e8f0;
+      flex-shrink: 0;
+    }
+
+    .match-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .match-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .match-sub {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+
+    /* Mensajes de estado vacío / no encontrado */
+    .empty-state {
+      text-align: center;
+      padding: 42px 20px;
+      color: var(--text-muted);
+      background: var(--surface);
+      border-radius: 16px;
+      border: 1px solid var(--border);
+    }
+
+    .empty-state .icon {
+      font-size: 2.4rem;
+      margin-bottom: 10px;
+    }
+
+    .not-found {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+    }
+
+    .not-found h3 {
+      margin-bottom: 6px;
+      font-size: 1.05rem;
+    }
+
+    /* Toast de aviso */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b;
+      color: white;
+      padding: 10px 18px;
+      border-radius: 999px;
+      font-size: 0.86rem;
+      font-weight: 500;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+      z-index: 999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s;
+    }
+
+    .toast.show {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Input oculto para seleccionar el archivo Excel -->
+  <input type="file" id="excel-input" accept=".xlsx,.xls" style="display: none;" />
+
+  <header>
+    <div class="header-top">
+      <div class="brand">
+        <h1>📚 Consulta Surtido Librería</h1>
+        <div class="file-status" id="file-status">Ningún listado cargado</div>
+      </div>
+      <button type="button" class="btn-change-excel" id="btn-change-file" title="Cargar Excel del mes">
+        <span>📂</span> Cambiar Excel
+      </button>
+    </div>
+
+    <div class="search-bar-wrapper">
+      <div class="input-group">
+        <input
+          type="text"
+          id="search-input"
+          class="search-input"
+          placeholder="Escanea EAN o escribe título..."
+          autocomplete="off"
+          inputmode="search"
+          disabled
+        />
+        <button type="button" id="btn-clear" class="btn-clear" title="Limpiar búsqueda">✕</button>
+      </div>
+      <button type="button" id="btn-scan" class="btn-scan" disabled title="Escanear código de barras con cámara">
+        <span>📷</span> <span class="scan-label">Cámara</span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Contenedor cámara escáner -->
+    <div id="scanner-container">
+      <div class="scanner-header">
+        <span>Apunta al código de barras (EAN) del libro</span>
+        <button type="button" class="btn-close-scanner" id="btn-close-scanner">Cerrar cámara</button>
+      </div>
+      <div id="reader"></div>
+    </div>
+
+    <!-- Pantalla inicial cuando no hay archivo guardado -->
+    <div id="upload-zone" class="upload-box">
+      <div class="upload-icon">📊</div>
+      <h2>Selecciona el Excel del surtido mensual</h2>
+      <p>
+        Carga el archivo <strong>SURTIDO LIBROS</strong> (.xlsx). Se extraerán automáticamente todas las categorías, títulos, precios y portadas incrustadas.
+      </p>
+      <button type="button" class="btn-primary-large">
+        <span>Seleccionar archivo Excel</span>
+      </button>
+    </div>
+
+    <!-- Pantalla de carga -->
+    <div id="loading-zone" class="loading-panel">
+      <div class="spinner"></div>
+      <h3 id="loading-text">Procesando Excel y extrayendo portadas...</h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 6px;">Esto solo tarda un par de segundos.</p>
+    </div>
+
+    <!-- Zona dinámica de resultados -->
+    <div id="results-zone" style="display: none;"></div>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    // ==========================================
+    // 1. GESTIÓN DE BASE DE DATOS LOCAL (IndexedDB)
+    // ==========================================
+    const DB_NAME = 'SurtidoLibreriaDB';
+    const DB_VERSION = 1;
+    const STORE_NAME = 'catalogStore';
+
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            db.createObjectStore(STORE_NAME);
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function saveCatalogToDB(data) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        tx.objectStore(STORE_NAME).put(data, 'currentCatalog');
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function loadCatalogFromDB() {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const req = tx.objectStore(STORE_NAME).get('currentCatalog');
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    // ==========================================
+    // 2. ESTADO GLOBAL Y ELEMENTOS DEL DOM
+    // ==========================================
+    let catalog = [];
+    let fileName = '';
+    let html5QrCode = null;
+    let isScanning = false;
+
+    const excelInput = document.getElementById('excel-input');
+    const btnChangeFile = document.getElementById('btn-change-file');
+    const uploadZone = document.getElementById('upload-zone');
+    const loadingZone = document.getElementById('loading-zone');
+    const loadingText = document.getElementById('loading-text');
+    const resultsZone = document.getElementById('results-zone');
+    const searchInput = document.getElementById('search-input');
+    const btnClear = document.getElementById('btn-clear');
+    const btnScan = document.getElementById('btn-scan');
+    const scannerContainer = document.getElementById('scanner-container');
+    const btnCloseScanner = document.getElementById('btn-close-scanner');
+    const fileStatus = document.getElementById('file-status');
+    const toastEl = document.getElementById('toast');
+
+    function showToast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('show');
+      setTimeout(() => toastEl.classList.remove('show'), 2800);
+    }
+
+    // ==========================================
+    // 3. EXTRACCIÓN DE IMÁGENES INCRUSTADAS (OOXML)
+    // ==========================================
+    async function extractEmbeddedImages(arrayBuffer) {
+      // Devuelve mapa: { "SHEET_NAME": { rowIndex0Based: "data:image/jpeg;base64,..." } }
+      const imagesBySheetAndRow = {};
+      try {
+        const zip = await JSZip.loadAsync(arrayBuffer);
+        const parser = new DOMParser();
+
+        // 1. Leer workbook.xml y workbook.xml.rels para mapear nombre de pestaña -> archivo sheetX.xml
+        const wbXmlStr = await zip.file('xl/workbook.xml')?.async('string');
+        const wbRelsStr = await zip.file('xl/_rels/workbook.xml.rels')?.async('string');
+        if (!wbXmlStr || !wbRelsStr) return imagesBySheetAndRow;
+
+        const wbDoc = parser.parseFromString(wbXmlStr, 'application/xml');
+        const wbRelsDoc = parser.parseFromString(wbRelsStr, 'application/xml');
+
+        const relMap = {};
+        wbRelsDoc.querySelectorAll('Relationship').forEach(rel => {
+          relMap[rel.getAttribute('Id')] = rel.getAttribute('Target');
+        });
+
+        const sheetsInfo = [];
+        wbDoc.querySelectorAll('sheet').forEach(sh => {
+          const name = sh.getAttribute('name');
+          const rId = sh.getAttribute('r:id') || sh.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+          let target = relMap[rId] || '';
+          if (target.startsWith('/')) target = target.slice(1);
+          if (!target.startsWith('xl/')) target = 'xl/' + target;
+          sheetsInfo.push({ name, path: target });
+        });
+
+        // Cachear imágenes base64 de xl/media/ para no leer duplicados varias veces
+        const mediaCache = {};
+        async function getMediaDataUrl(mediaPath) {
+          if (mediaCache[mediaPath]) return mediaCache[mediaPath];
+          const file = zip.file(mediaPath);
+          if (!file) return null;
+          const base64 = await file.async('base64');
+          const ext = mediaPath.split('.').pop().toLowerCase();
+          const mime = ext === 'png' ? 'image/png' : (ext === 'gif' ? 'image/gif' : 'image/jpeg');
+          const dataUrl = `data:${mime};base64,${base64}`;
+          mediaCache[mediaPath] = dataUrl;
+          return dataUrl;
+        }
+
+        // 2. Para cada pestaña, buscar su drawing XML y vincular fila -> imagen
+        for (const sh of sheetsInfo) {
+          const sheetFileName = sh.path.split('/').pop();
+          const sheetRelsPath = `xl/worksheets/_rels/${sheetFileName}.rels`;
+          const sheetRelsStr = await zip.file(sheetRelsPath)?.async('string');
+          if (!sheetRelsStr) continue;
+
+          const sheetRelsDoc = parser.parseFromString(sheetRelsStr, 'application/xml');
+          let drawingTarget = null;
+          sheetRelsDoc.querySelectorAll('Relationship').forEach(rel => {
+            if ((rel.getAttribute('Type') || '').includes('drawing')) {
+              drawingTarget = rel.getAttribute('Target');
+            }
+          });
+          if (!drawingTarget) continue;
+
+          // Resolver ruta del drawing (ej: ../drawings/drawing1.xml -> xl/drawings/drawing1.xml)
+          let drawingPath = drawingTarget.replace('../', 'xl/');
+          if (drawingPath.startsWith('/')) drawingPath = drawingPath.slice(1);
+          if (!drawingPath.startsWith('xl/')) drawingPath = 'xl/' + drawingPath;
+
+          const drawingFileName = drawingPath.split('/').pop();
+          const drawingRelsPath = `xl/drawings/_rels/${drawingFileName}.rels`;
+
+          const drawingXmlStr = await zip.file(drawingPath)?.async('string');
+          const drawingRelsStr = await zip.file(drawingRelsPath)?.async('string');
+          if (!drawingXmlStr || !drawingRelsStr) continue;
+
+          const drawingRelsDoc = parser.parseFromString(drawingRelsStr, 'application/xml');
+          const imgRelMap = {};
+          drawingRelsDoc.querySelectorAll('Relationship').forEach(rel => {
+            let t = rel.getAttribute('Target') || '';
+            t = t.replace('../', 'xl/');
+            if (t.startsWith('/')) t = t.slice(1);
+            if (!t.startsWith('xl/')) t = 'xl/' + t;
+            imgRelMap[rel.getAttribute('Id')] = t;
+          });
+
+          const drawingDoc = parser.parseFromString(drawingXmlStr, 'application/xml');
+          imagesBySheetAndRow[sh.name] = {};
+
+          // Buscar anclas twoCellAnchor y oneCellAnchor
+          const anchors = [
+            ...Array.from(drawingDoc.getElementsByTagNameNS('*', 'twoCellAnchor')),
+            ...Array.from(drawingDoc.getElementsByTagNameNS('*', 'oneCellAnchor'))
+          ];
+
+          for (const anchor of anchors) {
+            const fromEl = anchor.getElementsByTagNameNS('*', 'from')[0];
+            const blipEl = anchor.getElementsByTagNameNS('*', 'blip')[0];
+            if (!fromEl || !blipEl) continue;
+
+            const rowEl = fromEl.getElementsByTagNameNS('*', 'row')[0];
+            if (!rowEl) continue;
+            const rowIdx = parseInt(rowEl.textContent, 10);
+
+            const embedId = blipEl.getAttribute('r:embed') ||
+                            blipEl.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'embed');
+            const mediaPath = imgRelMap[embedId];
+            if (mediaPath) {
+              const dataUrl = await getMediaDataUrl(mediaPath);
+              if (dataUrl) {
+                imagesBySheetAndRow[sh.name][rowIdx] = dataUrl;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('No se pudieron extraer imágenes internas:', err);
+      }
+      return imagesBySheetAndRow;
+    }
+
+    // ==========================================
+    // 4. PARSEO DEL EXCEL COMPLETO
+    // ==========================================
+    async function processExcelFile(file) {
+      if (!file) return;
+      uploadZone.style.display = 'none';
+      resultsZone.style.display = 'none';
+      loadingZone.style.display = 'block';
+      loadingText.textContent = 'Leyendo hojas y extrayendo portadas...';
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+
+        // Extraer portadas incrustadas en paralelo con la lectura de celdas
+        const imagesMap = await extractEmbeddedImages(arrayBuffer);
+
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        const parsedBooks = [];
+
+        workbook.SheetNames.forEach(sheetName => {
+          // Ignorar hoja RESUMEN
+          if (sheetName.trim().toUpperCase() === 'RESUMEN') return;
+
+          const worksheet = workbook.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null });
+
+          // Buscar fila de cabecera que contenga "EAN" y "DESCRIPCIÓN" (o "TITULO")
+          let headerRowIdx = -1;
+          let colMap = {};
+
+          for (let r = 0; r < Math.min(rows.length, 25); r++) {
+            const row = rows[r];
+            if (!row) continue;
+            const upperRow = row.map(c => (c !== null ? String(c).trim().toUpperCase() : ''));
+            const eanIdx = upperRow.indexOf('EAN');
+            if (eanIdx !== -1) {
+              headerRowIdx = r;
+              colMap = {
+                ean: eanIdx,
+                titulo: upperRow.findIndex(h => h.includes('DESCRIPCI') || h.includes('TÍTULO') || h.includes('TITULO')),
+                categoria: upperRow.findIndex(h => h.includes('CATEGOR')),
+                codArt: upperRow.findIndex(h => h.includes('COD.ART') || h.includes('CODIGO')),
+                editorial: upperRow.findIndex(h => h.includes('EDITORIAL')),
+                pvp: upperRow.findIndex(h => h === 'PVP' || h.includes('PRECIO')),
+                mod: upperRow.findIndex(h => h === 'MOD' || h.includes('MÓDULO') || h.includes('MODULO')),
+                expositor: upperRow.findIndex(h => h.includes('EXPOSITOR')),
+                hasta: upperRow.findIndex(h => h.includes('HASTA'))
+              };
+              break;
+            }
+          }
+
+          if (headerRowIdx === -1) return;
+
+          let currentMod = '';
+          const sheetImages = imagesMap[sheetName] || {};
+
+          for (let r = headerRowIdx + 1; r < rows.length; r++) {
+            const row = rows[r];
+            if (!row) continue;
+
+            // Actualizar módulo si aparece en la columna MOD (a veces viene combinado en la primera fila del módulo)
+            if (colMap.mod !== -1 && row[colMap.mod] !== null && String(row[colMap.mod]).trim() !== '') {
+              currentMod = String(row[colMap.mod]).trim();
+            }
+
+            const rawEan = row[colMap.ean];
+            if (!rawEan) continue;
+
+            // Limpiar EAN (quitar espacios o decimales si Excel lo guardó como número)
+            const cleanEan = String(rawEan).replace(/\.0$/, '').replace(/\s+/g, '').trim();
+            if (!/^\d{8,14}$/.test(cleanEan)) continue;
+
+            const titulo = colMap.titulo !== -1 && row[colMap.titulo]
+              ? String(row[colMap.titulo]).trim()
+              : 'Sin título';
+
+            // Categoría: si existe columna CATEGORÍA la usa; si no (ej. pestaña EXPOSITORES), usa el nombre de la pestaña
+            let categoria = '';
+            if (colMap.categoria !== -1 && row[colMap.categoria]) {
+              categoria = String(row[colMap.categoria]).trim();
+            } else if (colMap.expositor !== -1 && row[colMap.expositor]) {
+              categoria = `EXPOSITOR · ${String(row[colMap.expositor]).trim()}`;
+            } else {
+              categoria = sheetName.trim();
+            }
+
+            const codArt = colMap.codArt !== -1 && row[colMap.codArt] ? String(row[colMap.codArt]).trim() : '-';
+            const editorial = colMap.editorial !== -1 && row[colMap.editorial] ? String(row[colMap.editorial]).trim() : '-';
+
+            let pvp = '-';
+            if (colMap.pvp !== -1 && row[colMap.pvp] !== null && row[colMap.pvp] !== '') {
+              const numPvp = parseFloat(String(row[colMap.pvp]).replace(',', '.'));
+              pvp = !isNaN(numPvp) ? numPvp.toFixed(2).replace('.', ',') + ' €' : String(row[colMap.pvp]);
+            }
+
+            let ubicacion = '';
+            if (colMap.expositor !== -1 && row[colMap.expositor]) {
+              const hastaStr = colMap.hasta !== -1 && row[colMap.hasta] ? ` (Hasta ${formatExcelDate(row[colMap.hasta])})` : '';
+              ubicacion = `${sheetName} · ${row[colMap.expositor]}${hastaStr}`;
+            } else {
+              ubicacion = currentMod ? `${sheetName} · Módulo ${currentMod}` : sheetName;
+            }
+
+            // Buscar imagen incrustada en esta fila exacta (o ±1 fila por si el ancla tocó el borde)
+            const image = sheetImages[r] || null;
+
+            parsedBooks.push({
+              ean: cleanEan,
+              titulo,
+              categoria,
+              sheet: sheetName.trim(),
+              ubicacion,
+              codArt,
+              editorial,
+              pvp,
+              image
+            });
+          }
+        });
+
+        if (parsedBooks.length === 0) {
+          throw new Error('No se encontraron libros con código EAN válido en el archivo.');
+        }
+
+        catalog = parsedBooks;
+        fileName = file.name;
+
+        await saveCatalogToDB({
+          fileName: file.name,
+          updatedAt: new Date().toLocaleDateString('es-ES'),
+          books: parsedBooks
+        });
+
+        activateAppUI();
+        showToast(`✅ Cargados ${parsedBooks.length} libros correctamente`);
+      } catch (err) {
+        console.error(err);
+        loadingZone.style.display = 'none';
+        if (catalog.length > 0) {
+          resultsZone.style.display = 'block';
+        } else {
+          uploadZone.style.display = 'block';
+        }
+        alert('Error al leer el Excel: ' + err.message);
+      } finally {
+        excelInput.value = '';
+      }
+    }
+
+    function formatExcelDate(val) {
+      if (typeof val === 'number') {
+        const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+        return d.toLocaleDateString('es-ES');
+      }
+      return String(val).trim();
+    }
+
+    // ==========================================
+    // 5. BÚSQUEDA Y RENDERIZADO DE RESULTADOS
+    // ==========================================
+    function activateAppUI() {
+      uploadZone.style.display = 'none';
+      loadingZone.style.display = 'none';
+      resultsZone.style.display = 'block';
+      searchInput.disabled = false;
+      btnScan.disabled = false;
+      fileStatus.textContent = `${fileName} (${catalog.length} ref.)`;
+      renderInitialPlaceholder();
+      setTimeout(() => searchInput.focus(), 100);
+    }
+
+    function renderInitialPlaceholder() {
+      resultsZone.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">🔍</div>
+          <h3>Listo para buscar</h3>
+          <p style="margin-top:6px; font-size:0.9rem;">
+            Escanea un código de barras con la pistola o la cámara, o escribe el EAN / título arriba.
+          </p>
+        </div>
+      `;
+    }
+
+    function handleSearch(queryRaw, autoSelectText = false) {
+      const q = queryRaw.trim();
+      btnClear.classList.toggle('visible', q.length > 0);
+
+      if (!q) {
+        renderInitialPlaceholder();
+        return;
+      }
+
+      const qLower = q.toLowerCase();
+
+      // 1. Coincidencia exacta por EAN (puede haber libros que estén tanto en módulo como en expositor)
+      const exactMatches = catalog.filter(b => b.ean === q);
+
+      if (exactMatches.length === 1) {
+        renderBookDetail(exactMatches[0]);
+        if (autoSelectText) searchInput.select();
+        return;
+      } else if (exactMatches.length > 1) {
+        renderMultipleResults(exactMatches, `El EAN ${q} aparece en ${exactMatches.length} ubicaciones:`);
+        if (autoSelectText) searchInput.select();
+        return;
+      }
+
+      // 2. Búsqueda parcial por EAN o por Título
+      const partialMatches = catalog.filter(b =>
+        b.ean.includes(q) || b.titulo.toLowerCase().includes(qLower)
+      );
+
+      if (partialMatches.length === 0) {
+        resultsZone.innerHTML = `
+          <div class="empty-state not-found">
+            <div class="icon">❌</div>
+            <h3>No encontrado en el surtido</h3>
+            <p style="font-size: 0.9rem;">El código o texto <strong>"${escapeHtml(q)}"</strong> no figura en el Excel cargado.</p>
+          </div>
+        `;
+      } else if (partialMatches.length === 1 && /^\d{10,13}$/.test(q)) {
+        renderBookDetail(partialMatches[0]);
+      } else {
+        renderMultipleResults(partialMatches.slice(0, 30), `Mostrando ${Math.min(partialMatches.length, 30)} de ${partialMatches.length} coincidencias:`);
+      }
+    }
+
+    function renderBookDetail(book) {
+      // Si el Excel no tiene imagen incrustada para esta fila, intentar respaldo con Open Library por ISBN
+      const fallbackUrl = `https://covers.openlibrary.org/b/isbn/${book.ean}-M.jpg?default=false`;
+
+      const coverHtml = book.image
+        ? `<img src="${book.image}" alt="Portada" class="cover-img" />`
+        : `<img src="${fallbackUrl}" alt="Portada" class="cover-img" onerror="this.outerHTML='<div class=\'no-cover\'><span style=\'font-size:2rem\'>📖</span><span>Sin portada en Excel</span></div>'" />`;
+
+      resultsZone.innerHTML = `
+        <div class="result-card">
+          <div class="cover-wrapper">
+            ${coverHtml}
+          </div>
+          <div class="details-wrapper">
+            <div>
+              <div class="badges-row">
+                <span class="badge-category">${escapeHtml(book.categoria)}</span>
+                <span class="badge-sheet">📍 ${escapeHtml(book.ubicacion)}</span>
+              </div>
+              <h2 class="book-title">${escapeHtml(book.titulo)}</h2>
+            </div>
+
+            <div class="meta-grid">
+              <div class="meta-item">
+                <span class="meta-label">EAN / ISBN</span>
+                <span class="meta-value">${escapeHtml(book.ean)}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">PVP</span>
+                <span class="meta-value price">${escapeHtml(book.pvp)}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Cód. Artículo</span>
+                <span class="meta-value">${escapeHtml(book.codArt)}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Editorial</span>
+                <span class="meta-value">${escapeHtml(book.editorial)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderMultipleResults(books, headerText) {
+      const itemsHtml = books.map((b, idx) => `
+        <div class="match-row" data-idx="${idx}">
+          ${b.image
+            ? `<img src="${b.image}" class="match-thumb" alt="" />`
+            : `<div class="match-thumb" style="display:flex;align-items:center;justify-content:center;font-size:1.2rem;">📘</div>`
+          }
+          <div class="match-info">
+            <div class="match-title">${escapeHtml(b.titulo)}</div>
+            <div class="match-sub">
+              <strong>${escapeHtml(b.categoria)}</strong> · ${escapeHtml(b.ubicacion)} · EAN: ${escapeHtml(b.ean)}
+            </div>
+          </div>
+          <div style="font-weight:700; color:#059669; font-size:0.9rem;">${escapeHtml(b.pvp)}</div>
+        </div>
+      `).join('');
+
+      resultsZone.innerHTML = `
+        <div class="matches-list">
+          <div class="matches-header">${escapeHtml(headerText)}</div>
+          ${itemsHtml}
+        </div>
+      `;
+
+      resultsZone.querySelectorAll('.match-row').forEach((rowEl, idx) => {
+        rowEl.addEventListener('click', () => {
+          searchInput.value = books[idx].ean;
+          renderBookDetail(books[idx]);
+        });
+      });
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // ==========================================
+    // 6. ESCÁNER DE CÓDIGO DE BARRAS CON CÁMARA
+    // ==========================================
+    async function startCameraScanner() {
+      if (isScanning) return;
+      scannerContainer.classList.add('active');
+      isScanning = true;
+
+      try {
+        html5QrCode = new Html5Qrcode("reader");
+        const config = {
+          fps: 12,
+          qrbox: { width: 260, height: 130 },
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.UPC_A
+          ]
+        };
+
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          config,
+          (decodedText) => {
+            // Vibración háptica en móvil si está disponible
+            if (navigator.vibrate) navigator.vibrate(80);
+            searchInput.value = decodedText;
+            stopCameraScanner();
+            handleSearch(decodedText, false);
+          },
+          () => { /* Ignorar frames sin lectura */ }
+        );
+      } catch (err) {
+        console.error(err);
+        stopCameraScanner();
+        alert("No se pudo acceder a la cámara. Asegúrate de dar permisos de cámara al navegador y abrir la página mediante HTTPS o archivo local permitido.");
+      }
+    }
+
+    async function stopCameraScanner() {
+      if (html5QrCode && isScanning) {
+        try {
+          await html5QrCode.stop();
+          html5QrCode.clear();
+        } catch (e) {
+          console.warn(e);
+        }
+      }
+      isScanning = false;
+      scannerContainer.classList.remove('active');
+    }
+
+    // ==========================================
+    // 7. EVENTOS E INICIALIZACIÓN
+    // ==========================================
+    btnChangeFile.addEventListener('click', () => excelInput.click());
+    uploadZone.addEventListener('click', () => excelInput.click());
+
+    uploadZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadZone.classList.add('dragover');
+    });
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+    uploadZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) {
+        processExcelFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    excelInput.addEventListener('change', (e) => {
+      if (e.target.files.length) {
+        processExcelFile(e.target.files[0]);
+      }
+    });
+
+    searchInput.addEventListener('input', (e) => {
+      handleSearch(e.target.value, false);
+    });
+
+    // Cuando la pistola lectora envía Enter al terminar de escanear:
+    // selecciona todo el texto para que el siguiente escaneo lo sobrescriba sin tener que borrar a mano
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSearch(searchInput.value, true);
+      }
+    });
+
+    btnClear.addEventListener('click', () => {
+      searchInput.value = '';
+      handleSearch('', false);
+      searchInput.focus();
+    });
+
+    btnScan.addEventListener('click', () => {
+      if (isScanning) {
+        stopCameraScanner();
+      } else {
+        startCameraScanner();
+      }
+    });
+
+    btnCloseScanner.addEventListener('click', stopCameraScanner);
+
+    // Al abrir la app, comprobar si ya hay un Excel guardado de este mes
+    window.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const saved = await loadCatalogFromDB();
+        if (saved && Array.isArray(saved.books) && saved.books.length > 0) {
+          catalog = saved.books;
+          fileName = saved.fileName || 'Surtido guardado';
+          activateAppUI();
+        }
+      } catch (e) {
+        console.warn('Error leyendo IndexedDB:', e);
+      }
+    });
+  </script>
+</body>
+</html>
